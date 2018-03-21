@@ -23,7 +23,7 @@ namespace TTAPI_Samples
 			//
 			this.textVersion.Text = Convert.ToString(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
 			this.textVersionDate.Text = "January 13, 2013";
-			this.textAuthors.Text = "Brian Fortman, Josh Bramlett";
+			this.textAuthors.Text = "Trading Technologies";
 		}
 
 		/// <summary>

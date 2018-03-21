@@ -15,9 +15,7 @@
 // ************************************************************************************************************************
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using slx.tt;
 
 namespace TTAPI_Sample_Console_OrderRouting
 {
@@ -27,98 +25,34 @@ namespace TTAPI_Sample_Console_OrderRouting
     /// <summary>
     /// Main TT API class
     /// </summary>
-    class TTAPIFunctions : IDisposable
+    class TTAPIFunctions : TTAPIAdapter
     {
         /// <summary>
         /// Declare the TTAPI objects
         /// </summary>
-        private UniversalLoginTTAPI m_apiInstance = null;
-        private WorkerDispatcher m_disp = null;
         private bool m_disposed = false;
+
         private object m_lock = new object();
         private InstrumentLookupSubscription m_req = null;
         private PriceSubscription m_ps = null;
         private InstrumentTradeSubscription m_ts = null;
         private string m_orderKey = "";
-        private string m_username = "";
-        private string m_password = "";
 
 
-        /// <summary>
-        /// Private default constructor
-        /// </summary>
-        private TTAPIFunctions()
+
+        public override void RunWorkers()
         {
+            // lookup an instrument
+            m_req = new InstrumentLookupSubscription(tt_api.Session, Dispatcher.Current,
+                new ProductKey(MarketKey.Cme, ProductType.Future, "ES"),
+                "Mar13");
+            m_req.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
+            m_req.Start();
         }
 
-        /// <summary>
-        /// Primary constructor
-        /// </summary>
-        public TTAPIFunctions(string u, string p)
+        public override void OnWorkResult(object sender, EventArgs e)
         {
-            m_username = u;
-            m_password = p;
-        }
-
-        /// <summary>
-        /// Create and start the Dispatcher
-        /// </summary>
-        public void Start()
-        {
-            // Attach a WorkerDispatcher to the current thread
-            m_disp = Dispatcher.AttachWorkerDispatcher();
-            m_disp.BeginInvoke(new Action(Init));
-            m_disp.Run();
-        }
-
-        /// <summary>
-        /// Initialize TT API
-        /// </summary>
-        public void Init()
-        {
-            // Use "Universal Login" Login Mode
-            ApiInitializeHandler h = new ApiInitializeHandler(ttApiInitComplete);
-            TTAPI.CreateUniversalLoginTTAPI(Dispatcher.Current, m_username, m_password, h);
-        }
-
-        /// <summary>
-        /// Event notification for status of TT API initialization
-        /// </summary>
-        public void ttApiInitComplete(TTAPI api, ApiCreationException ex)
-        {
-            if (ex == null)
-            {
-                // Authenticate your credentials
-                m_apiInstance = (UniversalLoginTTAPI)api;
-                m_apiInstance.AuthenticationStatusUpdate += new EventHandler<AuthenticationStatusUpdateEventArgs>(apiInstance_AuthenticationStatusUpdate);
-                m_apiInstance.Start();
-            }
-            else
-            {
-                Console.WriteLine("TT API Initialization Failed: {0}", ex.Message);
-                Dispose();
-            }
-        }
-
-        /// <summary>
-        /// Event notification for status of authentication
-        /// </summary>
-        public void apiInstance_AuthenticationStatusUpdate(object sender, AuthenticationStatusUpdateEventArgs e)
-        {
-            if (e.Status.IsSuccess)
-            {
-                // lookup an instrument
-                m_req = new InstrumentLookupSubscription(m_apiInstance.Session, Dispatcher.Current,
-                    new ProductKey(MarketKey.Cme, ProductType.Future, "ES"),
-                    "Mar13");
-                m_req.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
-                m_req.Start();
-            }
-            else
-            {
-                Console.WriteLine("TT Login failed: {0}", e.Status.StatusMessage);
-                Dispose();
-            }
+            throw new NotImplementedException();
         }
 
         /// <summary>
@@ -138,7 +72,8 @@ namespace TTAPI_Sample_Console_OrderRouting
                 m_ps.Start();
 
                 // Create a TradeSubscription to listen for order / fill events only for orders submitted through it
-                m_ts = new InstrumentTradeSubscription(m_apiInstance.Session, Dispatcher.Current, e.Instrument, true, true, false, false);
+                m_ts = new InstrumentTradeSubscription(tt_api.Session, Dispatcher.Current, e.Instrument, true, true,
+                    false, false);
                 m_ts.OrderUpdated += new EventHandler<OrderUpdatedEventArgs>(m_ts_OrderUpdated);
                 m_ts.OrderAdded += new EventHandler<OrderAddedEventArgs>(m_ts_OrderAdded);
                 m_ts.OrderDeleted += new EventHandler<OrderDeletedEventArgs>(m_ts_OrderDeleted);
@@ -168,7 +103,8 @@ namespace TTAPI_Sample_Console_OrderRouting
                     {
                         // If there is no order working, submit one through the first valid order feed.
                         // You should use the order feed that is valid for your purposes.
-                        OrderProfile op = new OrderProfile(e.Fields.Instrument.GetValidOrderFeeds()[0], e.Fields.Instrument);
+                        OrderProfile op = new OrderProfile(e.Fields.Instrument.GetValidOrderFeeds()[0],
+                            e.Fields.Instrument);
                         op.BuySell = BuySell.Buy;
                         op.AccountName = "12345678";
                         op.AccountType = AccountType.A1;
@@ -187,8 +123,8 @@ namespace TTAPI_Sample_Console_OrderRouting
                             Console.WriteLine("Send new order succeeded.");
                         }
                     }
-                    else if(m_ts.Orders.ContainsKey(m_orderKey) && 
-                        m_ts.Orders[m_orderKey].LimitPrice != e.Fields.GetBestBidPriceField().Value)
+                    else if (m_ts.Orders.ContainsKey(m_orderKey) &&
+                             m_ts.Orders[m_orderKey].LimitPrice != e.Fields.GetBestBidPriceField().Value)
                     {
                         // If there is a working order, reprice it if its price is not the same as the bid
                         OrderProfileBase op = m_ts.Orders[m_orderKey].GetOrderProfile();
@@ -238,7 +174,8 @@ namespace TTAPI_Sample_Console_OrderRouting
                 Console.WriteLine("Order was partially filled for {0} at {1}.", e.Fill.Quantity, e.Fill.MatchPrice);
             }
 
-            Console.WriteLine("Average Buy Price = {0} : Net Position = {1} : P&L = {2}", m_ts.ProfitLossStatistics.BuyAveragePrice,
+            Console.WriteLine("Average Buy Price = {0} : Net Position = {1} : P&L = {2}",
+                m_ts.ProfitLossStatistics.BuyAveragePrice,
                 m_ts.ProfitLossStatistics.NetPosition, m_ts.ProfitLoss.AsPrimaryCurrency);
         }
 
@@ -269,58 +206,40 @@ namespace TTAPI_Sample_Console_OrderRouting
         /// <summary>
         /// Shuts down the TT API
         /// </summary>
-        public void Dispose()
+        public override void OnDispose()
         {
-            lock(m_lock)
+            lock (m_lock)
             {
-                if (!m_disposed)
+                if (m_disposed) return;
+                // Unattached callbacks and dispose of all subscriptions
+                if (m_req != null)
                 {
-                    // Unattached callbacks and dispose of all subscriptions
-                    if (m_req != null)
-                    {
-                        m_req.Update -= m_req_Update;
-                        m_req.Dispose();
-                        m_req = null;
-                    }
-                    if (m_ps != null)
-                    {
-                        m_ps.FieldsUpdated -= m_ps_FieldsUpdated;
-                        m_ps.Dispose();
-                        m_ps = null;
-                    }
-                    if (m_ts != null)
-                    {
-                        m_ts.OrderUpdated -= m_ts_OrderUpdated;
-                        m_ts.OrderAdded -= m_ts_OrderAdded;
-                        m_ts.OrderDeleted -= m_ts_OrderDeleted;
-                        m_ts.OrderFilled -= m_ts_OrderFilled;
-                        m_ts.OrderRejected -= m_ts_OrderRejected;
-                        m_ts.Dispose();
-                        m_ts = null;
-                    }
-
-                    // Begin shutdown the TT API
-                    TTAPI.ShutdownCompleted += new EventHandler(TTAPI_ShutdownCompleted);
-                    TTAPI.Shutdown();
-
-                    m_disposed = true;
+                    m_req.Update -= m_req_Update;
+                    m_req.Dispose();
+                    m_req = null;
                 }
+
+                if (m_ps != null)
+                {
+                    m_ps.FieldsUpdated -= m_ps_FieldsUpdated;
+                    m_ps.Dispose();
+                    m_ps = null;
+                }
+
+                if (m_ts != null)
+                {
+                    m_ts.OrderUpdated -= m_ts_OrderUpdated;
+                    m_ts.OrderAdded -= m_ts_OrderAdded;
+                    m_ts.OrderDeleted -= m_ts_OrderDeleted;
+                    m_ts.OrderFilled -= m_ts_OrderFilled;
+                    m_ts.OrderRejected -= m_ts_OrderRejected;
+                    m_ts.Dispose();
+                    m_ts = null;
+                }
+
+                m_disposed = true;
             }
         }
 
-        /// <summary>
-        /// Event notification for completion of TT API shutdown
-        /// </summary>
-        public void TTAPI_ShutdownCompleted(object sender, EventArgs e)
-        {
-            // Shutdown the Dispatcher
-            if (m_disp != null)
-            {
-                m_disp.BeginInvokeShutdown();
-                m_disp = null;
-            }
-
-            // Dispose of any other objects / resources
-        }
     }
 }

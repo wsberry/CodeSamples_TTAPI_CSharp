@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
+
+using slx.tt;
 
 namespace TTAPI_Console_PriceSubscription_MT
 {
@@ -11,140 +11,36 @@ namespace TTAPI_Console_PriceSubscription_MT
     /// <summary>
     /// Main TT API class
     /// </summary>
-    class TTAPIFunctions : IDisposable
+    class TTAPIFunctions : TTAPIAdapter
     {
-        /// <summary>
-        /// Declare the TTAPI objects
-        /// </summary>
-        private UniversalLoginTTAPI m_apiInstance = null;
-        private WorkerDispatcher m_disp = null;
-        private bool m_disposed = false;
-        private object m_lock = new object();
-        private string m_username = "";
-        private string m_password = "";
-
-
-        /// <summary>
-        /// Private default constructor
-        /// </summary>
-        private TTAPIFunctions()
+        public override void RunWorkers()
         {
-        }
-
-        /// <summary>
-        /// Primary constructor
-        /// </summary>
-        public TTAPIFunctions(string u, string p)
-        {
-            m_username = u;
-            m_password = p;
-        }
-
-        /// <summary>
-        /// Create and start the Dispatcher
-        /// </summary>
-        public void Start()
-        {
-            // Attach a WorkerDispatcher to the current thread
-            m_disp = Dispatcher.AttachWorkerDispatcher();
-            m_disp.BeginInvoke(new Action(Init));
-            m_disp.Run();
-        }
-
-        /// <summary>
-        /// Initialize TT API
-        /// </summary>
-        public void Init()
-        {
-            // Use "Universal Login" Login Mode
-            ApiInitializeHandler h = new ApiInitializeHandler(ttApiInitComplete);
-            TTAPI.CreateUniversalLoginTTAPI(Dispatcher.Current, m_username, m_password, h);
-        }
-
-        /// <summary>
-        /// Event notification for status of TT API initialization
-        /// </summary>
-        public void ttApiInitComplete(TTAPI api, ApiCreationException ex)
-        {
-            if (ex == null)
+            // Start Time & Sales subscriptions on a separate thread
+            var lcd1 = new List<ContractDetails>
             {
-                // Authenticate your credentials
-                m_apiInstance = (UniversalLoginTTAPI)api;
-                m_apiInstance.AuthenticationStatusUpdate += new EventHandler<AuthenticationStatusUpdateEventArgs>(apiInstance_AuthenticationStatusUpdate);
-                m_apiInstance.Start();
-            }
-            else
+                new ContractDetails(MarketKey.Cme, ProductType.Future, "ES", "Dec13"),
+                new ContractDetails(MarketKey.Cme, ProductType.Future, "NQ", "Dec13")
+            };
+
+            var s1 = new Strategy1(tt_api, lcd1);
+            var workerThread1 = new Thread(s1.Start) {Name = "Strategy 1 Thread"};
+            workerThread1.Start();
+
+            // Start more Time & Sales subscriptions on a separate thread
+            var lcd2 = new List<ContractDetails>
             {
-                Console.WriteLine("TT API Initialization Failed: {0}", ex.Message);
-                Dispose();
-            }
+                new ContractDetails(MarketKey.Cbot, ProductType.Future, "ZB", "Dec13"),
+                new ContractDetails(MarketKey.Cbot, ProductType.Future, "ZN", "Dec13")
+            };
+
+            var s2 = new Strategy2(tt_api, lcd2);
+            var workerThread2 = new Thread(s2.Start) {Name = "Strategy 2 Thread"};
+            workerThread2.Start();
         }
 
-        /// <summary>
-        /// Event notification for status of authentication
-        /// </summary>
-        public void apiInstance_AuthenticationStatusUpdate(object sender, AuthenticationStatusUpdateEventArgs e)
+        public override void OnWorkResult(object sender, EventArgs e)
         {
-            if (e.Status.IsSuccess)
-            {
-                // Start Time & Sales subscriptions on a separate thread
-                List<ContractDetails> lcd1 = new List<ContractDetails>();
-                lcd1.Add(new ContractDetails(MarketKey.Cme, ProductType.Future, "ES", "Dec13"));
-                lcd1.Add(new ContractDetails(MarketKey.Cme, ProductType.Future, "NQ", "Dec13"));
-
-                Strategy1 s1 = new Strategy1(m_apiInstance, lcd1);
-                Thread workerThread1 = new Thread(s1.Start);
-                workerThread1.Name = "Strategy 1 Thread";
-                workerThread1.Start();
-
-                // Start more Time & Sales subscriptions on a separate thread
-                List<ContractDetails> lcd2 = new List<ContractDetails>();
-                lcd2.Add(new ContractDetails(MarketKey.Cbot, ProductType.Future, "ZB", "Dec13"));
-                lcd2.Add(new ContractDetails(MarketKey.Cbot, ProductType.Future, "ZN", "Dec13"));
-
-                Strategy2 s2 = new Strategy2(m_apiInstance, lcd2);
-                Thread workerThread2 = new Thread(s2.Start);
-                workerThread2.Name = "Strategy 2 Thread";
-                workerThread2.Start();
-            }
-            else
-            {
-                Console.WriteLine("TT Login failed: {0}", e.Status.StatusMessage);
-                Dispose();
-            }
-        }
-
-        /// <summary>
-        /// Shuts down the TT API
-        /// </summary>
-        public void Dispose()
-        {
-            lock (m_lock)
-            {
-                if (!m_disposed)
-                {
-                    // Begin shutdown the TT API
-                    TTAPI.ShutdownCompleted += new EventHandler(TTAPI_ShutdownCompleted);
-                    TTAPI.Shutdown();
-
-                    m_disposed = true;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Event notification for completion of TT API shutdown
-        /// </summary>
-        public void TTAPI_ShutdownCompleted(object sender, EventArgs e)
-        {
-            // Shutdown the Dispatcher
-            if (m_disp != null)
-            {
-                m_disp.BeginInvokeShutdown();
-                m_disp = null;
-            }
-
-            // Dispose of any other objects / resources
+           
         }
     }
 
@@ -153,17 +49,17 @@ namespace TTAPI_Console_PriceSubscription_MT
     /// </summary>
     public struct ContractDetails
     {
-        public MarketKey m_marketKey;
-        public ProductType m_productType;
-        public string m_product;
-        public string m_contract;
+        public MarketKey MarketKey;
+        public ProductType ProductType;
+        public string Product;
+        public string Contract;
 
         public ContractDetails(MarketKey mk, ProductType pt, string prod, string cont)
         {
-            m_marketKey = mk;
-            m_productType = pt;
-            m_product = prod;
-            m_contract = cont;
+            MarketKey = mk;
+            ProductType = pt;
+            Product = prod;
+            Contract = cont;
         }
     }
 }

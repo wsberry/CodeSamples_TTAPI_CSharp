@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
 
 namespace TTAPI_Console_PriceSubscription_MT
@@ -16,9 +14,9 @@ namespace TTAPI_Console_PriceSubscription_MT
         /// <summary>
         /// Declare the TTAPI objects
         /// </summary>
-        private UniversalLoginTTAPI m_apiInstance = null;
+        private readonly UniversalLoginTTAPI m_apiInstance = null;
         private WorkerDispatcher m_disp = null;
-        private object m_lock = new object();
+        private readonly object m_lock = new object();
         private bool m_disposed = false;
 
         private List<InstrumentLookupSubscription> m_lreq = new List<InstrumentLookupSubscription>();
@@ -100,7 +98,7 @@ namespace TTAPI_Console_PriceSubscription_MT
             {
                 InstrumentLookupSubscription req = new InstrumentLookupSubscription(
                     m_apiInstance.Session, Dispatcher.Current,
-                    new ProductKey(cd.m_marketKey, cd.m_productType, cd.m_product), cd.m_contract);
+                    new ProductKey(cd.MarketKey, cd.ProductType, cd.Product), cd.Contract);
                 req.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(req_Update);
                 m_lreq.Add(req);
                 req.Start();

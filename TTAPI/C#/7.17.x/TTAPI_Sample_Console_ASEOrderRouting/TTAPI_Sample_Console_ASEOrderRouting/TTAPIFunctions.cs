@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using slx.tt;
 
 namespace TTAPI_Sample_Console_ASEOrderRouting
 {
@@ -12,13 +11,11 @@ namespace TTAPI_Sample_Console_ASEOrderRouting
     /// <summary>
     /// Main TT API class
     /// </summary>
-    class TTAPIFunctions : IDisposable
+    class TTAPIFunctions : TTAPIAdapter
     {
         /// <summary>
         /// Declare the TTAPI objects
         /// </summary>
-        private UniversalLoginTTAPI m_apiInstance = null;
-        private WorkerDispatcher m_disp = null;
         private bool m_disposed = false;
         private object m_lock = new object();
         private InstrumentLookupSubscription m_req1 = null;
@@ -29,102 +26,42 @@ namespace TTAPI_Sample_Console_ASEOrderRouting
         private string m_orderKey = "";
         private Dictionary<int, Instrument> m_spreadLegKeys = new Dictionary<int, Instrument>();
         private string m_ASEGateway = "ASE-A";
-        private string m_username = "";
-        private string m_password = "";
-
-
-        /// <summary>
-        /// Private default constructor
-        /// </summary>
-        private TTAPIFunctions()
-        {
-        }
-
-        /// <summary>
-        /// Primary constructor
-        /// </summary>
-        public TTAPIFunctions(string u, string p)
-        {
-            m_username = u;
-            m_password = p;
-        }
-
-        /// <summary>
-        /// Create and start the Dispatcher
-        /// </summary>
-        public void Start()
-        {
-            // Attach a WorkerDispatcher to the current thread
-            m_disp = Dispatcher.AttachWorkerDispatcher();
-            m_disp.BeginInvoke(new Action(Init));
-            m_disp.Run();
-        }
-
-        /// <summary>
-        /// Initialize TT API
-        /// </summary>
-        public void Init()
-        {
-            // Use "Universal Login" Login Mode
-            ApiInitializeHandler h = new ApiInitializeHandler(ttApiInitComplete);
-            TTAPI.CreateUniversalLoginTTAPI(Dispatcher.Current, m_username, m_password, h);
-        }
-
-        /// <summary>
-        /// Event notification for status of TT API initialization
-        /// </summary>
-        public void ttApiInitComplete(TTAPI api, ApiCreationException ex)
-        {
-            if (ex == null)
-            {
-                // Authenticate your credentials
-                m_apiInstance = (UniversalLoginTTAPI)api;
-                m_apiInstance.AuthenticationStatusUpdate += new EventHandler<AuthenticationStatusUpdateEventArgs>(apiInstance_AuthenticationStatusUpdate);
-                m_apiInstance.Start();
-            }
-            else
-            {
-                Console.WriteLine("TT API Initialization Failed: {0}", ex.Message);
-                Dispose();
-            }
-        }
 
         /// <summary>
         /// Event notification for status of authentication
         /// </summary>
-        public void apiInstance_AuthenticationStatusUpdate(object sender, AuthenticationStatusUpdateEventArgs e)
+        public override void RunWorkers()
         {
-            if (e.Status.IsSuccess)
-            {
-                // lookup the leg instruments
 
-                ProductKey prodKeyLeg = new ProductKey(MarketKey.Cbot, ProductType.Future, "ZN");
+            // lookup the leg instruments
 
-                // We will use a dictionary to hold all instrument requests and update it when each instrument is found.
-                // Once all lookup requests for the legs are complete, we can continue with the creation of the spread.
-                // tagValue will be used in the dictionary to identify each lookup request.
+            ProductKey prodKeyLeg = new ProductKey(MarketKey.Cbot, ProductType.Future, "ZN");
 
-                int tagValue = 1000;
+            // We will use a dictionary to hold all instrument requests and update it when each instrument is found.
+            // Once all lookup requests for the legs are complete, we can continue with the creation of the spread.
+            // tagValue will be used in the dictionary to identify each lookup request.
 
-                m_req1 = new InstrumentLookupSubscription(m_apiInstance.Session, Dispatcher.Current, prodKeyLeg, "Mar13");
-                m_req1.Tag = tagValue;
-                m_spreadLegKeys.Add(tagValue, null);
-                m_req1.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
-                m_req1.Start();
+            int tagValue = 1000;
 
-                tagValue++;
+            m_req1 = new InstrumentLookupSubscription(tt_api.Session, Dispatcher.Current, prodKeyLeg, "Mar13");
+            m_req1.Tag = tagValue;
+            m_spreadLegKeys.Add(tagValue, null);
+            m_req1.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
+            m_req1.Start();
 
-                m_req2 = new InstrumentLookupSubscription(m_apiInstance.Session, Dispatcher.Current, prodKeyLeg, "Jun13");
-                m_req2.Tag = tagValue;
-                m_spreadLegKeys.Add(tagValue, null);
-                m_req2.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
-                m_req2.Start();
-            }
-            else
-            {
-                Console.WriteLine("TT Login failed: {0}", e.Status.StatusMessage);
-                Dispose();
-            }
+            tagValue++;
+
+            m_req2 = new InstrumentLookupSubscription(tt_api.Session, Dispatcher.Current, prodKeyLeg, "Jun13");
+            m_req2.Tag = tagValue;
+            m_spreadLegKeys.Add(tagValue, null);
+            m_req2.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
+            m_req2.Start();
+
+        }
+
+        public override void OnWorkResult(object sender, EventArgs e)
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>
@@ -198,7 +135,7 @@ namespace TTAPI_Sample_Console_ASEOrderRouting
                 }
 
                 // Create an AutospreaderInstrument corresponding to the synthetic spread
-                m_casReq = new CreateAutospreaderInstrumentRequest(m_apiInstance.Session, Dispatcher.Current, spreadDetails);
+                m_casReq = new CreateAutospreaderInstrumentRequest(tt_api.Session, Dispatcher.Current, spreadDetails);
                 m_casReq.Completed += new EventHandler<CreateAutospreaderInstrumentRequestEventArgs>(m_casReq_Completed);
                 m_casReq.Submit();
             }
@@ -268,7 +205,7 @@ namespace TTAPI_Sample_Console_ASEOrderRouting
                 m_ps.Start();
 
                 // Create an ASTradeSubscription to listen for order / fill events only for orders submitted through it
-                m_ts = new ASInstrumentTradeSubscription(m_apiInstance.Session, Dispatcher.Current, instr, true, true, false, false);
+                m_ts = new ASInstrumentTradeSubscription(tt_api.Session, Dispatcher.Current, instr, true, true, false, false);
                 m_ts.OrderUpdated += new EventHandler<OrderUpdatedEventArgs>(m_ts_OrderUpdated);
                 m_ts.OrderAdded += new EventHandler<OrderAddedEventArgs>(m_ts_OrderAdded);
                 m_ts.OrderDeleted += new EventHandler<OrderDeletedEventArgs>(m_ts_OrderDeleted);
@@ -433,70 +370,53 @@ namespace TTAPI_Sample_Console_ASEOrderRouting
         /// <summary>
         /// Shuts down the TT API
         /// </summary>
-        public void Dispose()
+        public override void OnDispose()
         {
             lock (m_lock)
             {
-                if (!m_disposed)
+                if (m_disposed) return;
+
+                // Unattached callbacks and dispose of all subscriptions
+                if (m_req1 != null)
                 {
-                    // Unattached callbacks and dispose of all subscriptions
-                    if (m_req1 != null)
-                    {
-                        m_req1.Update -= m_req_Update;
-                        m_req1.Dispose();
-                        m_req1 = null;
-                    }
-                    if (m_req2 != null)
-                    {
-                        m_req2.Update -= m_req_Update;
-                        m_req2.Dispose();
-                        m_req2 = null;
-                    }
-                    if (m_ps != null)
-                    {
-                        m_ps.FieldsUpdated -= m_ps_FieldsUpdated;
-                        m_ps.Dispose();
-                        m_ps = null;
-                    }
-                    if (m_ts != null)
-                    {
-                        m_ts.OrderAdded -= m_ts_OrderAdded;
-                        m_ts.OrderDeleted -= m_ts_OrderDeleted;
-                        m_ts.OrderFilled -= m_ts_OrderFilled;
-                        m_ts.OrderRejected -= m_ts_OrderRejected;
-                        m_ts.OrderUpdated -= m_ts_OrderUpdated;
-                        m_ts.Dispose();
-                        m_ts = null;
-                    }
-                    if (m_casReq != null)
-                    {
-                        m_casReq.Completed -= m_casReq_Completed;
-                        m_casReq.Dispose();
-                        m_casReq = null;
-                    }
-
-                    // Begin shutdown the TT API
-                    TTAPI.ShutdownCompleted += new EventHandler(TTAPI_ShutdownCompleted);
-                    TTAPI.Shutdown();
-
-                    m_disposed = true;
+                    m_req1.Update -= m_req_Update;
+                    m_req1.Dispose();
+                    m_req1 = null;
                 }
+                if (m_req2 != null)
+                {
+                    m_req2.Update -= m_req_Update;
+                    m_req2.Dispose();
+                    m_req2 = null;
+                }
+                if (m_ps != null)
+                {
+                    m_ps.FieldsUpdated -= m_ps_FieldsUpdated;
+                    m_ps.Dispose();
+                    m_ps = null;
+                }
+                if (m_ts != null)
+                {
+                    m_ts.OrderAdded -= m_ts_OrderAdded;
+                    m_ts.OrderDeleted -= m_ts_OrderDeleted;
+                    m_ts.OrderFilled -= m_ts_OrderFilled;
+                    m_ts.OrderRejected -= m_ts_OrderRejected;
+                    m_ts.OrderUpdated -= m_ts_OrderUpdated;
+                    m_ts.Dispose();
+                    m_ts = null;
+                }
+                if (m_casReq != null)
+                {
+                    m_casReq.Completed -= m_casReq_Completed;
+                    m_casReq.Dispose();
+                    m_casReq = null;
+                }
+
+
+                m_disposed = true;
             }
         }
 
-        /// <summary>
-        /// Event notification for completion of TT API shutdown
-        /// </summary>
-        public void TTAPI_ShutdownCompleted(object sender, EventArgs e)
-        {
-            // Shutdown the Dispatcher
-            if (m_disp != null)
-            {
-                m_disp.BeginInvokeShutdown();
-                m_disp = null;
-            }
-
-            // Dispose of any other objects / resources
-        }
+      
     }
 }

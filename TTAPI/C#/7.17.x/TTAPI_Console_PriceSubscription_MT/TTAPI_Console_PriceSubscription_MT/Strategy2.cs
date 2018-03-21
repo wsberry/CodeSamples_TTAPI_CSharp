@@ -100,7 +100,7 @@ namespace TTAPI_Console_PriceSubscription_MT
             {
                 InstrumentLookupSubscription req = new InstrumentLookupSubscription(
                     m_apiInstance.Session, Dispatcher.Current,
-                    new ProductKey(cd.m_marketKey, cd.m_productType, cd.m_product), cd.m_contract);
+                    new ProductKey(cd.MarketKey, cd.ProductType, cd.Product), cd.Contract);
                 req.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(req_Update);
                 m_lreq.Add(req);
                 req.Start();

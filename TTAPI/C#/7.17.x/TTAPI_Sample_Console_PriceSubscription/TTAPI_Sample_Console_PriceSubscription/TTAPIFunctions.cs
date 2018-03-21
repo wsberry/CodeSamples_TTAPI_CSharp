@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using slx.tt;
 
 namespace TTAPI_Sample_Console_PriceSubscription
 {
@@ -10,97 +8,31 @@ namespace TTAPI_Sample_Console_PriceSubscription
     /// <summary>
     /// Main TT API class
     /// </summary>
-    class TTAPIFunctions : IDisposable
+    class TTAPIFunctions : TTAPIAdapter
     {
         /// <summary>
         /// Declare the TTAPI objects
         /// </summary>
-        private UniversalLoginTTAPI m_apiInstance = null;
-        private WorkerDispatcher m_disp = null;
         private bool m_disposed = false;
+
         private object m_lock = new object();
         private InstrumentLookupSubscription m_req = null;
         private PriceSubscription m_ps = null;
-        private string m_username = "";
-        private string m_password = "";
 
-
-        /// <summary>
-        /// Private default constructor
-        /// </summary>
-        private TTAPIFunctions() 
-        { 
-        }
-
-        /// <summary>
-        /// Primary constructor
-        /// </summary>
-        public TTAPIFunctions(string u, string p)
+        public override void RunWorkers()
         {
-            m_username = u;
-            m_password = p;
+            // lookup an instrument
+            m_req = new InstrumentLookupSubscription(tt_api.Session, Dispatcher.Current,
+                new ProductKey(MarketKey.Cme, ProductType.Future, "CL"), "Apr18");
+            m_req.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
+            m_req.Start();
         }
 
-        /// <summary>
-        /// Create and start the Dispatcher
-        /// </summary>
-        public void Start()
+        public override void OnWorkResult(object sender, EventArgs e)
         {
-            // Attach a WorkerDispatcher to the current thread
-            m_disp = Dispatcher.AttachWorkerDispatcher();
-            m_disp.BeginInvoke(new Action(Init));
-            m_disp.Run();
+
         }
 
-        /// <summary>
-        /// Initialize TT API
-        /// </summary>
-        public void Init()
-        {
-            // Use "Universal Login" Login Mode
-            ApiInitializeHandler h = new ApiInitializeHandler(ttApiInitComplete);
-            TTAPI.CreateUniversalLoginTTAPI(Dispatcher.Current, m_username, m_password, h);
-        }
-
-        /// <summary>
-        /// Event notification for status of TT API initialization
-        /// </summary>
-        public void ttApiInitComplete(TTAPI api, ApiCreationException ex)
-        {
-            if (ex == null)
-            {
-                // Authenticate your credentials
-                m_apiInstance = (UniversalLoginTTAPI)api;
-                m_apiInstance.AuthenticationStatusUpdate += new EventHandler<AuthenticationStatusUpdateEventArgs>(apiInstance_AuthenticationStatusUpdate);
-                m_apiInstance.Start();
-            }
-            else
-            {
-                Console.WriteLine("TT API Initialization Failed: {0}", ex.Message);
-                Dispose();
-            }
-        }
-
-        /// <summary>
-        /// Event notification for status of authentication
-        /// </summary>
-        public void apiInstance_AuthenticationStatusUpdate(object sender, AuthenticationStatusUpdateEventArgs e)
-        {
-            if (e.Status.IsSuccess)
-            {
-                // lookup an instrument
-                m_req = new InstrumentLookupSubscription(m_apiInstance.Session, Dispatcher.Current,
-                    new ProductKey(MarketKey.Cme, ProductType.Future, "ES"),
-                    "Dec13");
-                m_req.Update += new EventHandler<InstrumentLookupSubscriptionEventArgs>(m_req_Update);
-                m_req.Start();
-            }
-            else
-            {
-                Console.WriteLine("TT Login failed: {0}", e.Status.StatusMessage);
-                Dispose();
-            }
-        }
 
         /// <summary>
         /// Event notification for instrument lookup
@@ -167,48 +99,28 @@ namespace TTAPI_Sample_Console_PriceSubscription
         /// <summary>
         /// Shuts down the TT API
         /// </summary>
-        public void Dispose()
+        public override void OnDispose()
         {
             lock (m_lock)
             {
-                if (!m_disposed)
+                if (m_disposed) return;
+                // Unattached callbacks and dispose of all subscriptions
+                if (m_req != null)
                 {
-                    // Unattached callbacks and dispose of all subscriptions
-                    if (m_req != null)
-                    {
-                        m_req.Update -= m_req_Update;
-                        m_req.Dispose();
-                        m_req = null;
-                    }
-                    if (m_ps != null)
-                    {
-                        m_ps.FieldsUpdated -= m_ps_FieldsUpdated;
-                        m_ps.Dispose();
-                        m_ps = null;
-                    }
-
-                    // Begin shutdown the TT API
-                    TTAPI.ShutdownCompleted += new EventHandler(TTAPI_ShutdownCompleted);
-                    TTAPI.Shutdown();
-
-                    m_disposed = true;
+                    m_req.Update -= m_req_Update;
+                    m_req.Dispose();
+                    m_req = null;
                 }
-            }
-        }
 
-        /// <summary>
-        /// Event notification for completion of TT API shutdown
-        /// </summary>
-        public void TTAPI_ShutdownCompleted(object sender, EventArgs e)
-        {
-            // Shutdown the Dispatcher
-            if (m_disp != null)
-            {
-                m_disp.BeginInvokeShutdown();
-                m_disp = null;
-            }
+                if (m_ps != null)
+                {
+                    m_ps.FieldsUpdated -= m_ps_FieldsUpdated;
+                    m_ps.Dispose();
+                    m_ps = null;
+                }
 
-            // Dispose of any other objects / resources
+                m_disposed = true;
+            }
         }
     }
 }
